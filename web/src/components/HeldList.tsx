@@ -14,12 +14,19 @@ export function HeldList({ held }: { held: Draft[] }) {
   return (
     <section aria-label="Held back" className="mt-10">
       <h2 className="text-lg font-semibold">Held back ({held.length})</h2>
-      <p className="text-sm text-gray-600">No reminder will be offered for these.</p>
+      <p className="text-sm text-gray-600">
+        No reminder will be offered for these.
+      </p>
       <ul className="mt-3 divide-y divide-gray-200 rounded-lg border border-gray-200">
         {held.map((d) => (
           <li key={d.id} className="p-3 text-sm">
-            <span className="font-medium">{d.customer_name}</span> · invoice #{d.invoice_number} ·{" "}
-            <span>{d.hold_reason ? REASON[d.hold_reason] ?? d.hold_reason : "Held"}</span>
+            <span className="font-medium">{d.customer_name}</span> · invoice #
+            {d.invoice_number} ·{" "}
+            <span>
+              {d.hold_reason
+                ? (REASON[d.hold_reason] ?? d.hold_reason)
+                : "Held"}
+            </span>
             {d.violations.length > 0 && (
               <ul className="mt-1 list-disc pl-5 text-red-700">
                 {d.violations.map((v, i) => (

@@ -2,22 +2,30 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { ActivityLog } from "@/components/ActivityLog";
 import { AskBox } from "@/components/AskBox";
 import { DraftReview } from "@/components/DraftReview";
 import { HeldList } from "@/components/HeldList";
+import { Queue } from "@/components/Queue";
 import {
+  EditRejected,
   askQuestion,
   decide,
+  listActivity,
   listDrafts,
-  nextDraft,
   runAgent,
+  type Activity,
   type Decision,
   type Draft,
+  type Violation,
 } from "@/lib/api";
 
 export default function DraftsPage() {
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [pending, setPending] = useState<Draft[]>([]);
   const [held, setHeld] = useState<Draft[]>([]);
+  const [activity, setActivity] = useState<Activity[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [rejected, setRejected] = useState<Violation[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -27,12 +35,17 @@ export default function DraftsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [next, heldNow] = await Promise.all([
-        nextDraft(),
+      const [p, h, a] = await Promise.all([
+        listDrafts("pending"),
         listDrafts("held"),
+        listActivity(),
       ]);
-      setDraft(next);
-      setHeld(heldNow);
+      setPending(p);
+      setHeld(h);
+      setActivity(a);
+      setSelectedId((id) =>
+        p.some((d) => d.id === id) ? id : (p[0]?.id ?? null),
+      );
     } catch {
       setError("Couldn't reach the API.");
     } finally {
@@ -44,19 +57,26 @@ export default function DraftsPage() {
     void load();
   }, [load]);
 
-  async function onDecide(d: Decision) {
-    if (!draft) return;
+  const selected = pending.find((d) => d.id === selectedId) ?? null;
+
+  async function onDecide(
+    d: Decision,
+    edits?: { subject: string; body: string },
+  ) {
+    if (!selected) return;
     setBusy(true);
+    setRejected([]);
     try {
-      await decide(draft.id, d);
+      await decide(selected.id, d, edits);
       setMessage(
         d === "approve"
-          ? `Approved the reminder for invoice #${draft.invoice_number}.`
-          : `Skipped invoice #${draft.invoice_number}.`,
+          ? `Approved — ready to send: invoice #${selected.invoice_number}.`
+          : `Skipped invoice #${selected.invoice_number}.`,
       );
       await load();
-    } catch {
-      setError("That decision didn't save. Try again.");
+    } catch (e) {
+      if (e instanceof EditRejected) setRejected(e.violations);
+      else setError("That decision didn't save. Try again.");
     } finally {
       setBusy(false);
     }
@@ -76,8 +96,8 @@ export default function DraftsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl p-8">
-      <div className="flex items-center justify-between">
+    <main className="mx-auto max-w-5xl p-4 sm:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Overdue reminders</h1>
         <button
           type="button"
@@ -89,7 +109,8 @@ export default function DraftsPage() {
         </button>
       </div>
       <p className="mt-1 text-sm text-gray-600">
-        Nothing is sent without your approval. Sample data only.
+        Nothing is sent without your approval, and this demo never sends. Sample
+        data only.
       </p>
       <AskBox onAsk={askQuestion} />
       {message && (
@@ -102,15 +123,29 @@ export default function DraftsPage() {
           {error}
         </p>
       )}
-      <section className="mt-6">
-        {loading ? (
-          <p className="text-gray-500">Loading…</p>
-        ) : draft ? (
-          <DraftReview draft={draft} onDecide={onDecide} busy={busy} />
-        ) : (
-          <p className="text-gray-600">No reminders waiting.</p>
-        )}
-      </section>
+      {loading ? (
+        <p className="mt-6 text-gray-500">Loading…</p>
+      ) : (
+        <div className="mt-6 grid gap-6 md:grid-cols-[18rem_1fr]">
+          <Queue
+            drafts={pending}
+            selectedId={selected?.id ?? null}
+            onSelect={(id) => {
+              setRejected([]);
+              setSelectedId(id);
+            }}
+          />
+          {selected && (
+            <DraftReview
+              draft={selected}
+              onDecide={onDecide}
+              busy={busy}
+              rejected={rejected}
+            />
+          )}
+        </div>
+      )}
+      <ActivityLog items={activity} />
       <HeldList held={held} />
     </main>
   );

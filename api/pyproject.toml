@@ -13,6 +13,7 @@ dependencies = [
   "sqlalchemy>=2.0",
   "psycopg[binary]>=3.2",
   "mcp>=1.9",
+  "alembic>=1.14",
 ]
 
 [dependency-groups]
@@ -43,6 +44,7 @@ ignore = ["S101"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106"]  # fake keys and paths in tests
+"tests/test_migrations.py" = ["E501"]  # raw SQL for the pre-Alembic schema
 
 [tool.mypy]
 strict = true

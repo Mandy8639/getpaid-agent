@@ -1,23 +1,14 @@
-export type Draft = {
-  id: number;
-  invoice_number: string;
-  customer_name: string;
-  balance: string;
-  days_overdue: number;
-  tone: string | null;
-  subject: string | null;
-  body: string | null;
-  status: "pending" | "held" | "approved" | "skipped";
-  hold_reason: string | null;
-  violations: { rule: string; detail: string }[];
-  guardrail_passed: boolean;
-  tries: number;
-  model: string | null;
-};
+import type { components } from "./api-types";
+
+// Generated from the API's OpenAPI schema (`make types`); never edit api-types.ts by hand.
+export type Draft = components["schemas"]["DraftOut"];
+export type Activity = components["schemas"]["ActivityOut"];
+export type Violation = { rule: string; detail: string };
 
 export type Decision = "approve" | "skip";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function ok(r: Response): Promise<Response> {
   if (!r.ok) throw new Error(`API ${r.status}`);
@@ -29,28 +20,65 @@ export async function runAgent(): Promise<{ pending: number; held: number }> {
 }
 
 export async function nextDraft(): Promise<Draft | null> {
-  const r = await ok(await fetch(`${API_URL}/drafts/next`, { cache: "no-store" }));
+  const r = await ok(
+    await fetch(`${API_URL}/drafts/next`, { cache: "no-store" }),
+  );
   return r.status === 204 ? null : r.json();
 }
 
 export async function listDrafts(status: Draft["status"]): Promise<Draft[]> {
-  const r = await ok(await fetch(`${API_URL}/drafts?status=${status}`, { cache: "no-store" }));
+  const r = await ok(
+    await fetch(`${API_URL}/drafts?status=${status}`, { cache: "no-store" }),
+  );
   return r.json();
 }
 
-export async function decide(id: number, decision: Decision): Promise<Draft> {
+export class EditRejected extends Error {
+  constructor(public violations: Violation[]) {
+    super("The edited reminder didn't pass the checks.");
+  }
+}
+
+export async function decide(
+  id: number,
+  decision: Decision,
+  edits?: { subject?: string; body?: string },
+): Promise<Draft> {
   const r = await fetch(`${API_URL}/drafts/${id}/decision`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision }),
+    body: JSON.stringify({ decision, ...edits }),
   });
+  if (r.status === 422) {
+    const body = (await r.json().catch(() => ({}))) as {
+      detail?: { violations?: Violation[] };
+    };
+    if (
+      body.detail &&
+      typeof body.detail === "object" &&
+      body.detail.violations
+    ) {
+      throw new EditRejected(body.detail.violations);
+    }
+  }
   return (await ok(r)).json();
+}
+
+export async function listActivity(): Promise<Activity[]> {
+  return (
+    await ok(await fetch(`${API_URL}/activity`, { cache: "no-store" }))
+  ).json();
 }
 
 export type AskResult = {
   answer: string;
   source: "model" | "fallback" | "refused";
-  rows: { invoice_number: string; customer: string; balance: string; days_overdue: number }[];
+  rows: {
+    invoice_number: string;
+    customer: string;
+    balance: string;
+    days_overdue: number;
+  }[];
   summary: { count?: number; total_balance?: string };
 };
 

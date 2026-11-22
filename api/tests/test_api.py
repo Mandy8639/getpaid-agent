@@ -240,3 +240,115 @@ def test_ask_maps_data_source_failures_to_502_not_422(engine: Engine) -> None:
     r = TestClient(app).post("/ask", json={"question": "who is late?"})
     assert r.status_code == 502
     assert "MCP error" not in r.text
+
+
+# --- slice 5: edit-then-approve ("ready to send"), history, activity ---
+
+
+def _acme(client: TestClient) -> dict:  # type: ignore[type-arg]
+    client.post("/runs")
+    return next(
+        d
+        for d in client.get("/drafts", params={"status": "pending"}).json()
+        if d["invoice_number"] == "1042"
+    )
+
+
+def test_approve_without_edits_is_ready_to_send_with_the_draft_text(client: TestClient) -> None:
+    d = _acme(client)
+    r = client.post(f"/drafts/{d['id']}/decision", json={"decision": "approve"}).json()
+    assert r["status"] == "approved" and r["final_body"] == d["body"] and r["edited"] is False
+    act = client.get("/activity").json()
+    assert act[0]["invoice_number"] == "1042" and act[0]["label"] == "Ready to send"
+
+
+def test_approve_with_a_valid_edit_stores_the_edited_text(client: TestClient) -> None:
+    d = _acme(client)
+    body = d["body"].replace("Could you let us know", "Please let us know")
+    r = client.post(
+        f"/drafts/{d['id']}/decision", json={"decision": "approve", "body": body}
+    ).json()
+    assert r["final_body"] == body and r["edited"] is True
+
+
+def test_edit_that_breaks_a_fact_is_rejected_and_draft_stays_pending(client: TestClient) -> None:
+    d = _acme(client)
+    bad = d["body"].replace("$1,840.00", "$1,480.00")
+    r = client.post(f"/drafts/{d['id']}/decision", json={"decision": "approve", "body": bad})
+    assert r.status_code == 422
+    assert any(v["rule"] == "G1" for v in r.json()["detail"]["violations"])
+    still = next(
+        x for x in client.get("/drafts", params={"status": "pending"}).json() if x["id"] == d["id"]
+    )
+    assert still["status"] == "pending"
+
+
+def test_skip_ignores_any_edits(client: TestClient) -> None:
+    d = _acme(client)
+    r = client.post(
+        f"/drafts/{d['id']}/decision", json={"decision": "skip", "body": "anything"}
+    ).json()
+    assert r["status"] == "skipped" and r["final_body"] is None
+    assert client.get("/activity").json()[0]["label"] == "Skipped"
+
+
+def test_drafts_carry_payment_history(client: TestClient) -> None:
+    client.post("/runs")
+    cobalt = next(
+        d
+        for d in client.get("/drafts", params={"status": "pending"}).json()
+        if d["invoice_number"] == "1044"
+    )
+    h = cobalt["history"]
+    assert h["total"] == "3200.00" and h["paid_so_far"] == "2000.00"
+    assert h["payment_dates"] == ["2026-11-12"] and h["due_date"] == "2026-11-14"
+
+
+def test_activity_is_newest_first(client: TestClient) -> None:
+    client.post("/runs")
+    pend = client.get("/drafts", params={"status": "pending"}).json()
+    for d in pend[:3]:
+        client.post(f"/drafts/{d['id']}/decision", json={"decision": "approve"})
+    assert [a["draft_id"] for a in client.get("/activity").json()] == [d["id"] for d in pend[:3]][
+        ::-1
+    ]
+
+
+@pytest.mark.parametrize("field,size", [("subject", 201), ("body", 4001)])
+def test_edit_size_limits(client: TestClient, field: str, size: int) -> None:
+    d = _acme(client)
+    r = client.post(f"/drafts/{d['id']}/decision", json={"decision": "approve", field: "x" * size})
+    assert r.status_code == 422
+
+
+# --- slice 5 security review ---
+
+
+def test_edit_on_a_draft_without_a_snapshot_is_refused(client: TestClient, engine: Engine) -> None:
+    d = _acme(client)
+    with engine.begin() as c:
+        c.execute(drafts.update().where(drafts.c.id == d["id"]).values(case_snapshot=None))
+    r = client.post(
+        f"/drafts/{d['id']}/decision", json={"decision": "approve", "body": d["body"] + " Thanks!"}
+    )
+    assert r.status_code == 409
+    assert (
+        client.post(f"/drafts/{d['id']}/decision", json={"decision": "approve"}).status_code == 200
+    )
+
+
+@pytest.mark.parametrize(
+    "payload", [{"body": "   "}, {"subject": ""}, {"subject": "Invoice #1042\r\nBcc: x@y.example"}]
+)
+def test_blank_text_and_line_breaks_in_subject_are_rejected(
+    client: TestClient, payload: dict[str, str]
+) -> None:
+    d = _acme(client)
+    r = client.post(f"/drafts/{d['id']}/decision", json={"decision": "approve", **payload})
+    assert r.status_code == 422
+
+
+def test_history_tolerates_an_old_snapshot_shape() -> None:
+    from getpaid.main import _history
+
+    assert _history({"unexpected": "shape"}) is None

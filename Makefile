@@ -1,4 +1,4 @@
-.PHONY: up down install mcp spend-init test lint e2e
+.PHONY: up down install mcp spend-init test lint e2e types migrate
 
 up:
 	docker compose up -d --wait db
@@ -28,3 +28,11 @@ lint: install
 
 e2e: install up
 	cd web && npx playwright test
+
+# Regenerate web/openapi.json and the TypeScript types from the API.
+types:
+	cd api && uv run python -m getpaid.export_openapi
+	cd web && npm run types
+
+migrate:
+	cd api && uv run alembic upgrade head

@@ -19,6 +19,7 @@ const base: Draft = {
   guardrail_passed: true,
   tries: 0,
   model: null,
+  edited: false,
 };
 
 test("lists held invoices with a plain reason and any violations", () => {
@@ -32,7 +33,9 @@ test("lists held invoices with a plain reason and any violations", () => {
           invoice_number: "1042",
           customer_name: "Acme Landscaping",
           hold_reason: "guardrail_blocked",
-          violations: [{ rule: "G1", detail: "amount 1804.00 is not on the record" }],
+          violations: [
+            { rule: "G1", detail: "amount 1804.00 is not on the record" },
+          ],
         },
       ]}
     />,

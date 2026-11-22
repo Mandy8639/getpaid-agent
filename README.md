@@ -5,11 +5,24 @@ through an accounting MCP server, drafts a reminder for each overdue one, checks
 amount, date and invoice number against the record, and sends nothing without the owner's
 approval.
 
-Status: under construction. Slices 1–2 of 8: works end to end on synthetic invoices, from
+Status: under construction. Slices 1–5 of 8: works end to end on synthetic invoices, from
 saved sample files or live from a QuickBooks Online sandbox through Intuit's MCP server:
 check invoices → deterministic decision (paid, disputed and not-yet-due invoices are held)
 → draft (template, or an OpenRouter model with `DRAFTER=llm`) → guardrail → owner approves
 or skips in the web app → recorded in Postgres. Nothing is sent anywhere yet.
+
+## Reviewing reminders
+
+The dashboard (`/drafts`) shows a queue of reminders ranked by amount × days overdue. Each
+one shows the invoice's payment history (total, paid so far and when, earlier late
+payments). The owner can edit the subject and message; on approve, edited text is checked
+again by the same guardrail, and an edit that breaks a fact (say, a wrong amount) is
+rejected with the reason. **Approve marks a reminder "ready to send" and records the exact
+approved text. This demo never sends anything**: the accounting MCP server has no send tool,
+and sending is left as the next integration. Every decision appears in the activity log.
+
+The web app's TypeScript types are generated from the API's OpenAPI schema (`make types`);
+CI fails if they drift. Database changes go through Alembic migrations (`make migrate`).
 
 ## What the guardrail checks
 

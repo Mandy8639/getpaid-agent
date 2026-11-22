@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
 from getpaid.config import get_settings
-from getpaid.db import make_engine, metadata
+from getpaid.db import make_engine, migrate
 
 
 def main() -> None:
@@ -24,9 +24,10 @@ def main() -> None:
             c.execute(text(f'create database "{url.database}"'))
     admin.dispose()
     engine = make_engine(url.render_as_string(hide_password=False))
-    metadata.drop_all(engine)
-    metadata.create_all(engine)
+    with engine.begin() as c:
+        c.execute(text("drop schema public cascade; create schema public"))
     engine.dispose()
+    migrate(url.render_as_string(hide_password=False))
 
 
 if __name__ == "__main__":

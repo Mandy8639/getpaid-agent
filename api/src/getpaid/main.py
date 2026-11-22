@@ -9,13 +9,14 @@ from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Engine, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from getpaid.agent.decide import decide
 from getpaid.agent.drafter import Drafter, LLMDrafter, TemplateDrafter
 from getpaid.agent.graph import RunResult, run_case
+from getpaid.agent.guardrail import Draft, check
 from getpaid.agent.qa import (
     MAX_QUESTION,
     Asker,
@@ -26,8 +27,9 @@ from getpaid.agent.qa import (
 )
 from getpaid.data.mcp_source import McpSource
 from getpaid.data.source import DataSource, FixtureSource
-from getpaid.db import approvals, drafts, make_engine, metadata
+from getpaid.db import approvals, drafts, make_engine, migrate
 from getpaid.domain import Action, Case, HoldReason, Policy
+from getpaid.evalset import case_from_dict, case_to_dict
 from getpaid.llm.openrouter import SpendCapReached
 
 log = logging.getLogger("getpaid")
@@ -48,6 +50,44 @@ class AskOut(BaseModel):
 
 class DecisionIn(BaseModel):
     decision: Literal["approve", "skip"]
+    # Optional owner edits; on approve the edited text must pass the guardrail again.
+    subject: str | None = Field(default=None, min_length=1, max_length=200)
+    body: str | None = Field(default=None, min_length=1, max_length=4000)
+
+    @field_validator("subject", "body")
+    @classmethod
+    def not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("must not be blank")
+        return v
+
+    @field_validator("subject")
+    @classmethod
+    def one_line(cls, v: str | None) -> str | None:
+        # A future email sender must never get header-like line breaks in the subject.
+        if v is not None and ("\r" in v or "\n" in v):
+            raise ValueError("subject must be a single line")
+        return v
+
+
+class History(BaseModel):
+    total: str
+    paid_so_far: str
+    payment_dates: list[str]
+    prior_late_payments: int
+    txn_date: str
+    due_date: str
+
+
+class ActivityOut(BaseModel):
+    draft_id: int
+    invoice_number: str
+    customer_name: str
+    decision: Literal["approve", "skip"]
+    label: Literal["Ready to send", "Skipped"]
+    edited: bool
+    final_subject: str | None
+    decided_at: str
 
 
 class DraftOut(BaseModel):
@@ -65,6 +105,27 @@ class DraftOut(BaseModel):
     guardrail_passed: bool
     tries: int
     model: str | None
+    history: History | None = None
+    final_subject: str | None = None
+    final_body: str | None = None
+    edited: bool = False
+
+
+def _history(snapshot: dict[str, Any] | None) -> History | None:
+    if not snapshot:
+        return None
+    try:
+        return History(
+            total=snapshot["invoice"]["total"],
+            paid_so_far=snapshot["paid_so_far"],
+            payment_dates=snapshot["payment_dates"],
+            prior_late_payments=snapshot["prior_late_payments"],
+            txn_date=snapshot["invoice"]["txn_date"],
+            due_date=snapshot["invoice"]["due_date"],
+        )
+    except (KeyError, TypeError, ValueError):
+        log.warning("draft snapshot has an unexpected shape; history omitted")
+        return None
 
 
 def _out(row: Any) -> DraftOut:
@@ -84,7 +145,20 @@ def _out(row: Any) -> DraftOut:
         guardrail_passed=not (m["violations"] or []),
         tries=m["tries"],
         model=m["model"],
+        history=_history(m.get("case_snapshot")),
+        final_subject=m.get("final_subject"),
+        final_body=m.get("final_body"),
+        edited=bool(m.get("edited") or False),
     )
+
+
+_WITH_DECISION = drafts.outerjoin(approvals, approvals.c.draft_id == drafts.c.id)
+_DRAFT_COLS = [
+    *drafts.c,
+    approvals.c.final_subject,
+    approvals.c.final_body,
+    approvals.c.edited,
+]
 
 
 def _safe_run(case: Case, policy: Policy, drafter: Drafter) -> RunResult:
@@ -116,6 +190,7 @@ def _row(case: Case, r: RunResult) -> dict[str, Any]:
         "violations": [{"rule": v.rule, "detail": v.detail} for v in r.violations],
         "tries": r.tries,
         "model": r.model or None,
+        "case_snapshot": case_to_dict(case),
     }
 
 
@@ -168,7 +243,11 @@ def create_app(
 
     @app.get("/drafts")
     def list_drafts(status: Annotated[Status | None, Query()] = None) -> list[DraftOut]:
-        q = select(drafts).order_by(drafts.c.priority.desc(), drafts.c.id)
+        q = (
+            select(*_DRAFT_COLS)
+            .select_from(_WITH_DECISION)
+            .order_by(drafts.c.priority.desc(), drafts.c.id)
+        )
         if status:
             q = q.where(drafts.c.status == status)
         with engine.connect() as c:
@@ -177,7 +256,8 @@ def create_app(
     @app.get("/drafts/next", response_model=None)
     def next_draft() -> DraftOut | Response:
         q = (
-            select(drafts)
+            select(*_DRAFT_COLS)
+            .select_from(_WITH_DECISION)
             .where(drafts.c.status == "pending")
             .order_by(drafts.c.priority.desc(), drafts.c.id)
             .limit(1)
@@ -211,21 +291,88 @@ def create_app(
 
     @app.post("/drafts/{draft_id}/decision")
     def decide_draft(draft_id: int, body: DecisionIn) -> DraftOut:
-        new_status = "approved" if body.decision == "approve" else "skipped"
+        approve = body.decision == "approve"
         with engine.begin() as c:
-            row = c.execute(
+            current = c.execute(
+                select(drafts).where(drafts.c.id == draft_id).with_for_update()
+            ).first()
+            if current is None:
+                raise HTTPException(404, "draft not found")
+            m = current._mapping
+            if m["status"] != "pending":
+                raise HTTPException(409, "draft is not pending")
+            final_subject = final_body = None
+            edited = False
+            if approve:
+                final_subject = body.subject if body.subject is not None else m["subject"]
+                final_body = body.body if body.body is not None else m["body"]
+                edited = (final_subject, final_body) != (m["subject"], m["body"])
+                if edited and not m["case_snapshot"]:
+                    # Drafts made before slice 5 have no stored facts to re-check edits against.
+                    raise HTTPException(409, "edits aren't available for this older draft")
+                if edited:
+                    case = case_from_dict(m["case_snapshot"])
+                    problems = check(Draft(subject=final_subject, body=final_body), case, policy)
+                    if problems.violations:
+                        raise HTTPException(
+                            422,
+                            {
+                                "message": "the edited reminder didn't pass the checks",
+                                "violations": [
+                                    {"rule": v.rule, "detail": v.detail}
+                                    for v in problems.violations
+                                ],
+                            },
+                        )
+            c.execute(
                 update(drafts)
                 .where(drafts.c.id == draft_id, drafts.c.status == "pending")
-                .values(status=new_status, decided_at=func.now())
-                .returning(*drafts.c)
+                .values(status="approved" if approve else "skipped", decided_at=func.now())
+            )
+            c.execute(
+                insert(approvals).values(
+                    draft_id=draft_id,
+                    decision=body.decision,
+                    final_subject=final_subject,
+                    final_body=final_body,
+                    edited=edited,
+                )
+            )
+            row = c.execute(
+                select(*_DRAFT_COLS).select_from(_WITH_DECISION).where(drafts.c.id == draft_id)
             ).first()
-            if row is None:
-                exists = c.execute(select(drafts.c.id).where(drafts.c.id == draft_id)).first()
-                if exists is None:
-                    raise HTTPException(404, "draft not found")
-                raise HTTPException(409, "draft is not pending")
-            c.execute(insert(approvals).values(draft_id=draft_id, decision=body.decision))
         return _out(row)
+
+    @app.get("/activity")
+    def activity() -> list[ActivityOut]:
+        q = (
+            select(
+                approvals.c.draft_id,
+                approvals.c.decision,
+                approvals.c.edited,
+                approvals.c.final_subject,
+                approvals.c.decided_at,
+                drafts.c.invoice_number,
+                drafts.c.customer_name,
+            )
+            .select_from(approvals.join(drafts, approvals.c.draft_id == drafts.c.id))
+            .order_by(approvals.c.decided_at.desc(), approvals.c.id.desc())
+            .limit(50)
+        )
+        with engine.connect() as c:
+            return [
+                ActivityOut(
+                    draft_id=r.draft_id,
+                    invoice_number=r.invoice_number,
+                    customer_name=r.customer_name,
+                    decision=r.decision,
+                    label="Ready to send" if r.decision == "approve" else "Skipped",
+                    edited=r.edited,
+                    final_subject=r.final_subject,
+                    decided_at=r.decided_at.isoformat(),
+                )
+                for r in c.execute(q)
+            ]
 
     return app
 
@@ -235,8 +382,8 @@ def _app_from_settings() -> FastAPI:
     from getpaid.llm.factory import client_from_settings
 
     s = get_settings()
+    migrate(s.database_url)
     engine = make_engine(s.database_url)
-    metadata.create_all(engine)
     has_key = bool(s.openrouter_api_key.get_secret_value().strip()) and bool(s.model_list())
     client = client_from_settings(s) if has_key else None
     drafter: Drafter = LLMDrafter(client) if (s.drafter == "llm" and client) else TemplateDrafter()
