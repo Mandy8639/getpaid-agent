@@ -1,0 +1,7 @@
+This project installs, but does not include or modify, the QuickBooks Online MCP server:
+  https://github.com/intuit/quickbooks-online-mcp-server
+  pinned at commit 31a1dd5c3e170e368dbff651abbaf61aabde6ed9 (2026-09-15)
+Its repository carries an Apache License 2.0 LICENSE file; its package.json declares MIT.
+
+QuickBooks and Intuit are trademarks of Intuit Inc. This project is independent and not
+affiliated with or endorsed by Intuit.

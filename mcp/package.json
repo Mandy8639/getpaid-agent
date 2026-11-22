@@ -1,0 +1,8 @@
+{
+  "name": "getpaid-mcp-runtime",
+  "private": true,
+  "description": "Installs the accounting MCP server this project talks to. Pinned git dependency, never vendored or modified.",
+  "dependencies": {
+    "@qboapi/qbo-mcp-server": "github:intuit/quickbooks-online-mcp-server#31a1dd5c3e170e368dbff651abbaf61aabde6ed9"
+  }
+}

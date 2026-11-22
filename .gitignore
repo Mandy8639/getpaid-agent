@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.spend/
+__pycache__/
+.venv/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+web/.next/
