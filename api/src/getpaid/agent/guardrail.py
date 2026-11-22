@@ -193,7 +193,7 @@ def check(draft: Draft, case: Case, policy: Policy) -> GuardrailResult:
         v.append(Violation("G4", "contains hidden characters"))
 
     # G1 facts
-    allowed_money = {inv.balance, inv.total} | ({case.paid_so_far} if case.paid_so_far else set())
+    allowed_money = {inv.balance, inv.total, case.paid_so_far}  # $0.00 paid is a true fact
     amounts = _money(text)
     for amt in amounts:
         if amt not in allowed_money:

@@ -5,11 +5,43 @@ through an accounting MCP server, drafts a reminder for each overdue one, checks
 amount, date and invoice number against the record, and sends nothing without the owner's
 approval.
 
-Status: under construction. Slices 1–6 of 8: works end to end on synthetic invoices, from
+Status: under construction. Slices 1–7 of 8: works end to end on synthetic invoices, from
 saved sample files or live from a QuickBooks Online sandbox through Intuit's MCP server:
 check invoices → deterministic decision (paid, disputed and not-yet-due invoices are held)
 → draft (template, or an OpenRouter model with `DRAFTER=llm`) → guardrail → owner approves
 or skips in the web app → recorded in Postgres. Nothing is sent anywhere yet.
+
+## Results (frozen test set)
+
+50 synthetic scenarios from the seeded sandbox (29 should get a reminder, 21 must be held),
+frozen and hashed before any tuning. Tuning used a separate 30-scenario dev split. Report with
+every failure: [`reports/eval-test-v1-rerun.md`](reports/eval-test-v1-rerun.md); every model
+output is stored next to it, and `golden/test_runs.jsonl` logs each run with the git revision
+and file hashes.
+
+| system | correct | unsafe | on the 29 draft cases | adversarial (7): drafted / held / unsafe | cost |
+|---|---|---|---|---|---|
+| template (no model) | 48/50 | 0 | 27 correct, 2 held | 5 / 2 / 0 | $0 |
+| single-prompt baseline | 29/50 | **21** | 29 correct, 0 unsafe | 7 / 0 / 0 | $0.019 |
+| **full pipeline** | **50/50** | **0** | 29 correct, 0 unsafe | 7 / 0 / 0 | $0.011 |
+
+How to read it:
+
+- **The baseline is never allowed to hold.** It drafts for every invoice, so it fails all 21
+  hold cases by construction. That gap measures the deterministic decision step (paid,
+  disputed and not-yet-due invoices never reach the model), not the model's writing. On the 29
+  draft cases alone, the model wrote correct, safe reminders 29/29.
+- **The model resisted every injection on its own**, so on this set the content checks were a
+  backstop and the full pipeline needed no repairs. They did catch a real problem on the dev
+  split: the first dev run held 6 of 21 drafts. The cause was the guardrail rejecting
+  "$0.00 paid", which is a true fact. After that fix and a prompt tweak (both made against dev
+  scenarios only), dev went from 24/30 to 30/30.
+- **Two test runs, same result.** The first (`v1`) used the original scorer. A code review then
+  found scorer gaps (references written "invoice 1234", amounts in "dollars"). The scorer was
+  tightened, and the unchanged agent was run again (`v1-rerun`). Outcomes were identical.
+- p50 latency 2.9 s, p95 3.9 s. Model spend for the whole build so far: **$0.10 of a $5 cap**.
+- Limits: synthetic data from one seeded sandbox, one English/US-dollar policy, and a scorer
+  written by the same author as the guardrail (though as separate code).
 
 ## Reviewing reminders
 

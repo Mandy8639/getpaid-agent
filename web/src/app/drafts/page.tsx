@@ -153,6 +153,7 @@ export default function DraftsPage() {
               onDecide={onDecide}
               busy={busy}
               rejected={rejected}
+              showHistory={arm === "show"}
             />
           )}
         </div>

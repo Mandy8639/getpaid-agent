@@ -232,3 +232,8 @@ def test_invoice_followed_by_days_is_not_an_invoice_number() -> None:
 @pytest.mark.parametrize("extra", ["Our SWIFT code is on file.", "Use routing number 0210"])
 def test_bank_terms_still_blocked(extra: str) -> None:
     assert "G4" in rules(GOOD + " " + extra)
+
+
+def test_zero_paid_so_far_is_a_true_fact() -> None:
+    # Found in the slice 7 dev run: models write "Paid so far: USD 0.00".
+    assert "G1" not in rules(GOOD + " Paid so far: USD 0.00.")
