@@ -117,6 +117,29 @@
     "title": "AskOut",
     "type": "object"
    },
+   "AssignmentOut": {
+    "properties": {
+     "arm": {
+      "title": "Arm",
+      "type": "string"
+     },
+     "experiment_id": {
+      "title": "Experiment Id",
+      "type": "string"
+     },
+     "owner_id": {
+      "title": "Owner Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "experiment_id",
+     "owner_id",
+     "arm"
+    ],
+    "title": "AssignmentOut",
+    "type": "object"
+   },
    "DecisionIn": {
     "properties": {
      "body": {
@@ -139,6 +162,19 @@
       ],
       "title": "Decision",
       "type": "string"
+     },
+     "seconds_to_decide": {
+      "anyOf": [
+       {
+        "maximum": 86400.0,
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seconds To Decide"
      },
      "subject": {
       "anyOf": [
@@ -603,6 +639,62 @@
      }
     },
     "summary": "Decide Draft"
+   }
+  },
+  "/experiments/{experiment_id}/assignment": {
+   "get": {
+    "operationId": "assignment_experiments__experiment_id__assignment_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "experiment_id",
+      "required": true,
+      "schema": {
+       "title": "Experiment Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "owner",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 64,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Owner"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AssignmentOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Assignment"
    }
   },
   "/health": {

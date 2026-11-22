@@ -11,6 +11,7 @@ import {
   EditRejected,
   askQuestion,
   decide,
+  experimentArm,
   listActivity,
   listDrafts,
   runAgent,
@@ -26,6 +27,10 @@ export default function DraftsPage() {
   const [activity, setActivity] = useState<Activity[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [rejected, setRejected] = useState<Violation[]>([]);
+  // null until the arm is known, so "hide" owners never see a flash of the history panel.
+  // On failure the page shows the control version; events still log the assigned arm (ITT).
+  const [arm, setArm] = useState<string | null>(null);
+  const [shownAt, setShownAt] = useState<number>(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -55,7 +60,14 @@ export default function DraftsPage() {
 
   useEffect(() => {
     void load();
+    experimentArm("EXP-001")
+      .then(setArm)
+      .catch(() => setArm("show"));
   }, [load]);
+
+  useEffect(() => {
+    setShownAt(Date.now());
+  }, [selectedId]);
 
   const selected = pending.find((d) => d.id === selectedId) ?? null;
 
@@ -67,7 +79,7 @@ export default function DraftsPage() {
     setBusy(true);
     setRejected([]);
     try {
-      await decide(selected.id, d, edits);
+      await decide(selected.id, d, edits, (Date.now() - shownAt) / 1000);
       setMessage(
         d === "approve"
           ? `Approved — ready to send: invoice #${selected.invoice_number}.`

@@ -18,11 +18,14 @@ export function DraftReview({
   onDecide,
   busy = false,
   rejected = [],
+  showHistory = true,
 }: {
   draft: Draft;
   onDecide: (d: Decision, edits?: { subject: string; body: string }) => void;
   busy?: boolean;
   rejected?: Violation[];
+  /** EXP-001: arm "hide" leaves out the payment-history panel. */
+  showHistory?: boolean;
 }) {
   const [subject, setSubject] = useState(draft.subject ?? "");
   const [body, setBody] = useState(draft.body ?? "");
@@ -51,7 +54,7 @@ export function DraftReview({
       <p className="mt-1 text-xs uppercase tracking-wide text-gray-500">
         {draft.tone ? (TONE[draft.tone] ?? draft.tone) : ""}
       </p>
-      {h && (
+      {h && showHistory && (
         <dl
           aria-label="Payment history"
           className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm"

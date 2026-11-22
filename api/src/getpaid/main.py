@@ -27,12 +27,16 @@ from getpaid.agent.qa import (
 )
 from getpaid.data.mcp_source import McpSource
 from getpaid.data.source import DataSource, FixtureSource
-from getpaid.db import approvals, drafts, make_engine, migrate
+from getpaid.db import approvals, drafts, events, make_engine, migrate
 from getpaid.domain import Action, Case, HoldReason, Policy
 from getpaid.evalset import case_from_dict, case_to_dict
+from getpaid.experiments.assign import EXP_001, EXPERIMENTS, assign
 from getpaid.llm.openrouter import SpendCapReached
 
 log = logging.getLogger("getpaid")
+# Single-tenant until login exists (slice 8): every decision is attributed to one owner, so
+# the live experiment has one owner; the simulation is what exercises the analysis.
+DEMO_OWNER = "demo-owner"
 
 Status = Literal["pending", "held", "approved", "skipped"]
 
@@ -53,6 +57,8 @@ class DecisionIn(BaseModel):
     # Optional owner edits; on approve the edited text must pass the guardrail again.
     subject: str | None = Field(default=None, min_length=1, max_length=200)
     body: str | None = Field(default=None, min_length=1, max_length=4000)
+    # How long the owner looked at the draft before deciding (from the web app; optional).
+    seconds_to_decide: float | None = Field(default=None, ge=0, le=86_400)
 
     @field_validator("subject", "body")
     @classmethod
@@ -77,6 +83,12 @@ class History(BaseModel):
     prior_late_payments: int
     txn_date: str
     due_date: str
+
+
+class AssignmentOut(BaseModel):
+    experiment_id: str
+    owner_id: str
+    arm: str
 
 
 class ActivityOut(BaseModel):
@@ -203,6 +215,7 @@ def create_app(
     as_of: date | None = None,
     web_origin: str = "http://localhost:3000",
     asker: Asker | None = None,
+    owner_id: str = DEMO_OWNER,
 ) -> FastAPI:
     app = FastAPI(title="getpaid-agent API", version="0.1.0")
     app.add_middleware(
@@ -292,6 +305,33 @@ def create_app(
     @app.post("/drafts/{draft_id}/decision")
     def decide_draft(draft_id: int, body: DecisionIn) -> DraftOut:
         approve = body.decision == "approve"
+        arm = assign(owner_id, EXP_001)
+
+        def event(c: Any, kind: str, edited: bool) -> None:
+            c.execute(
+                insert(events).values(
+                    owner_id=owner_id,
+                    experiment_id=EXP_001.id,
+                    arm=arm,
+                    draft_id=draft_id,
+                    type=kind,
+                    edited=edited,
+                    seconds=body.seconds_to_decide,
+                )
+            )
+
+        try:
+            return _decide(draft_id, body, approve, event)
+        except HTTPException as e:
+            if e.status_code == 422:  # a rejected edit is a guardrail metric for EXP-001
+                try:
+                    with engine.begin() as c:
+                        event(c, "rejected_edit", True)
+                except Exception:  # never let event logging replace the guardrail's answer
+                    log.exception("could not log rejected_edit event")
+            raise
+
+    def _decide(draft_id: int, body: DecisionIn, approve: bool, event: Any) -> DraftOut:
         with engine.begin() as c:
             current = c.execute(
                 select(drafts).where(drafts.c.id == draft_id).with_for_update()
@@ -338,10 +378,21 @@ def create_app(
                     edited=edited,
                 )
             )
+            event(c, "approved" if approve else "skipped", edited)
             row = c.execute(
                 select(*_DRAFT_COLS).select_from(_WITH_DECISION).where(drafts.c.id == draft_id)
             ).first()
         return _out(row)
+
+    @app.get("/experiments/{experiment_id}/assignment")
+    def assignment(
+        experiment_id: str, owner: Annotated[str | None, Query(max_length=64)] = None
+    ) -> AssignmentOut:
+        exp = EXPERIMENTS.get(experiment_id)
+        if exp is None:
+            raise HTTPException(404, "unknown experiment")
+        who = owner or owner_id
+        return AssignmentOut(experiment_id=exp.id, owner_id=who, arm=assign(who, exp))
 
     @app.get("/activity")
     def activity() -> list[ActivityOut]:

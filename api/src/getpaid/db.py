@@ -6,6 +6,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Engine,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -60,6 +61,23 @@ approvals = Table(
     Column("final_body", Text),
     Column("edited", Boolean, nullable=False, server_default=false()),
 )
+
+
+events = Table(
+    "events",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    Column("owner_id", String(64), nullable=False),
+    Column("experiment_id", String(32), nullable=False),
+    Column("arm", String(16), nullable=False),
+    Column("draft_id", ForeignKey("drafts.id")),
+    Column("type", String(16), nullable=False),  # approved | skipped | rejected_edit
+    Column("edited", Boolean, nullable=False, server_default=false()),
+    Column("seconds", Float),
+    Column("simulated", Boolean, nullable=False, server_default=false()),
+)
+Index("ix_events_experiment_arm", events.c.experiment_id, events.c.arm)
 
 
 def make_engine(url: str, *, autocommit: bool = False) -> Engine:

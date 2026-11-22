@@ -43,11 +43,16 @@ export async function decide(
   id: number,
   decision: Decision,
   edits?: { subject?: string; body?: string },
+  secondsToDecide?: number,
 ): Promise<Draft> {
   const r = await fetch(`${API_URL}/drafts/${id}/decision`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision, ...edits }),
+    body: JSON.stringify({
+      decision,
+      ...edits,
+      seconds_to_decide: secondsToDecide,
+    }),
   });
   if (r.status === 422) {
     const body = (await r.json().catch(() => ({}))) as {
@@ -62,6 +67,15 @@ export async function decide(
     }
   }
   return (await ok(r)).json();
+}
+
+export async function experimentArm(experimentId: string): Promise<string> {
+  const r = await ok(
+    await fetch(`${API_URL}/experiments/${experimentId}/assignment`, {
+      cache: "no-store",
+    }),
+  );
+  return ((await r.json()) as { arm: string }).arm;
 }
 
 export async function listActivity(): Promise<Activity[]> {

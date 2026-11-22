@@ -352,3 +352,33 @@ def test_history_tolerates_an_old_snapshot_shape() -> None:
     from getpaid.main import _history
 
     assert _history({"unexpected": "shape"}) is None
+
+
+# --- slice 6: experiment events and assignment ---
+
+
+def test_decisions_and_rejected_edits_are_logged_with_the_owner_arm(
+    client: TestClient, engine: Engine
+) -> None:
+    from getpaid.db import events
+    from getpaid.experiments.assign import EXP_001, assign
+
+    d = _acme(client)
+    bad = d["body"].replace("$1,840.00", "$1,480.00")
+    client.post(f"/drafts/{d['id']}/decision", json={"decision": "approve", "body": bad})
+    client.post(
+        f"/drafts/{d['id']}/decision", json={"decision": "approve", "seconds_to_decide": 12.5}
+    )
+    with engine.connect() as c:
+        rows = c.execute(events.select().order_by(events.c.id)).all()
+    assert [r.type for r in rows] == ["rejected_edit", "approved"]
+    assert {r.arm for r in rows} == {assign("demo-owner", EXP_001)}
+    assert rows[1].seconds == 12.5 and rows[1].simulated is False
+
+
+def test_assignment_endpoint(client: TestClient) -> None:
+    from getpaid.experiments.assign import EXP_001, assign
+
+    r = client.get("/experiments/EXP-001/assignment", params={"owner": "o-7"}).json()
+    assert r == {"experiment_id": "EXP-001", "owner_id": "o-7", "arm": assign("o-7", EXP_001)}
+    assert client.get("/experiments/NOPE/assignment").status_code == 404

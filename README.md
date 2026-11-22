@@ -5,7 +5,7 @@ through an accounting MCP server, drafts a reminder for each overdue one, checks
 amount, date and invoice number against the record, and sends nothing without the owner's
 approval.
 
-Status: under construction. Slices 1–5 of 8: works end to end on synthetic invoices, from
+Status: under construction. Slices 1–6 of 8: works end to end on synthetic invoices, from
 saved sample files or live from a QuickBooks Online sandbox through Intuit's MCP server:
 check invoices → deterministic decision (paid, disputed and not-yet-due invoices are held)
 → draft (template, or an OpenRouter model with `DRAFTER=llm`) → guardrail → owner approves
@@ -23,6 +23,26 @@ and sending is left as the next integration. Every decision appears in the activ
 
 The web app's TypeScript types are generated from the API's OpenAPI schema (`make types`);
 CI fails if they drift. Database changes go through Alembic migrations (`make migrate`).
+
+## Experiments (simulated owners only)
+
+There are no real users, so this part is a working pipeline exercised on **simulated** owners,
+labelled as such everywhere:
+
+- **Sticky assignment:** `hash(experiment id, owner id)` picks the arm. Weights are
+  configurable, and balance and independence are tested at 10,000 owners.
+- **Events:** each decision, and each edit the checks rejected, is logged with the owner's arm
+  and time to decide (`events` table). The dashboard applies the arm.
+- **Pre-registration before data:** [`docs/experiments/EXP-001-history-panel.md`](docs/experiments/EXP-001-history-panel.md).
+  Does showing payment history change how often owners approve reminders without editing?
+- **Analysis:** difference in proportions with a Newcombe–Wilson 95% CI. The false-positive
+  rate is tested at about 5%. "No detectable difference" is worded as such, and small samples
+  are flagged.
+- **Simulated run:** [`reports/exp-001-simulated.md`](reports/exp-001-simulated.md). With a
+  built-in −5 point effect, the per-draft analysis said "no detectable difference". The
+  per-owner interval contained the true effect, and repeat simulations put power at 74%. The
+  pre-registered sample size had ignored owner-to-owner variation; the amendment records that
+  lesson rather than hiding it.
 
 ## What the guardrail checks
 

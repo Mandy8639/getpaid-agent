@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/experiments/{experiment_id}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assignment */
+        get: operations["assignment_experiments__experiment_id__assignment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -175,6 +192,15 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AssignmentOut */
+        AssignmentOut: {
+            /** Arm */
+            arm: string;
+            /** Experiment Id */
+            experiment_id: string;
+            /** Owner Id */
+            owner_id: string;
+        };
         /** DecisionIn */
         DecisionIn: {
             /** Body */
@@ -184,6 +210,8 @@ export interface components {
              * @enum {string}
              */
             decision: "approve" | "skip";
+            /** Seconds To Decide */
+            seconds_to_decide?: number | null;
             /** Subject */
             subject?: string | null;
         };
@@ -401,6 +429,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assignment_experiments__experiment_id__assignment_get: {
+        parameters: {
+            query?: {
+                owner?: string | null;
+            };
+            header?: never;
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignmentOut"];
                 };
             };
             /** @description Validation Error */

@@ -43,7 +43,7 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM"]
 ignore = ["S101"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106"]  # fake keys and paths in tests
+"tests/*" = ["S105", "S106", "S311"]  # fake keys/paths; non-crypto random in tests
 "tests/test_migrations.py" = ["E501"]  # raw SQL for the pre-Alembic schema
 
 [tool.mypy]

@@ -80,6 +80,13 @@ describe("DraftReview", () => {
     );
   });
 
+  test("EXP-001 arm 'hide' leaves out the payment history", () => {
+    render(
+      <DraftReview draft={draft} onDecide={() => {}} showHistory={false} />,
+    );
+    expect(screen.queryByLabelText("Payment history")).toBeNull();
+  });
+
   test("decided drafts can't be edited or approved", () => {
     render(
       <DraftReview
