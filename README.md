@@ -5,7 +5,8 @@ through an accounting MCP server, drafts a reminder for each overdue one, checks
 amount, date and invoice number against the record, and sends nothing without the owner's
 approval.
 
-Status: under construction. Slice 1 of 8 works end to end on synthetic sample invoices:
+Status: under construction. Slices 1–2 of 8: works end to end on synthetic invoices, from
+saved sample files or live from a QuickBooks Online sandbox through Intuit's MCP server:
 check invoices → deterministic decision (paid, disputed and not-yet-due invoices are held)
 → draft (template, or an OpenRouter model with `DRAFTER=llm`) → guardrail → owner approves
 or skips in the web app → recorded in Postgres. Nothing is sent anywhere yet.
@@ -42,6 +43,34 @@ make lint test e2e
 cd api && uv run uvicorn getpaid.asgi:app --port 8000   # API
 cd web && npx next dev                                  # http://localhost:3000/drafts
 ```
+
+## Live sandbox mode (optional)
+
+The app can read a QuickBooks Online **sandbox** through Intuit's MCP server instead of the
+sample files:
+
+```bash
+make mcp                                  # install Intuit's server (pinned commit)
+cp .qbo-tokens.example .qbo-tokens        # then add your sandbox app's client ID/secret
+chmod 600 .qbo-tokens
+cd mcp/node_modules/@qboapi/qbo-mcp-server && \
+  QUICKBOOKS_TOKEN_STORE_PATH=$PWD/../../../../.qbo-tokens node dist/auth-server.js   # one-time OAuth
+cd api && uv run python -m getpaid.seed          # dry run: shows what would be created
+cd api && uv run python -m getpaid.seed --apply  # 40 synthetic customers, 150 invoices
+SOURCE=mcp                                # in .env, then run the API as usual
+RUN_LIVE=1 uv run pytest tests/test_live_contract.py   # contract tests against the sandbox
+```
+
+Safeguards:
+
+- **Read-only by default.** The server is started with its write, update and delete tools
+  switched off, and every call is also checked against an allowlist. The seed script can
+  create customers, invoices and payments, but never update or delete them.
+- **Sandbox only.** The token file may hold only `QUICKBOOKS_*` keys and must say
+  `QUICKBOOKS_ENVIRONMENT=sandbox`, or nothing starts. The server never sees the model key.
+- **Only our synthetic records.** A customer is used only if it carries the seed tag *and* is
+  listed in `.seed/manifest.json`. Intuit's pre-loaded sample company is never sent to a
+  model. Without a manifest, the live source returns nothing.
 
 ## Model calls
 

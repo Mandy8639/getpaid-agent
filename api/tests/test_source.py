@@ -26,11 +26,6 @@ def test_parse_entities_raises_on_error_text() -> None:
         parse_entities([{"type": "text", "text": "Error searching invoices: boom"}])
 
 
-def test_parse_entities_rejects_non_object_json() -> None:
-    with pytest.raises(McpContentError):
-        parse_entities([{"type": "text", "text": "Found 1"}, {"type": "text", "text": "[1, 2]"}])
-
-
 def test_cases_cover_every_fixture_invoice_with_money_as_decimal() -> None:
     cases = {c.invoice.doc_number: c for c in FixtureSource().cases(AS_OF)}
     assert set(cases) == {"1042", "1043", "1044", "1045", "1046", "1047", "1048", "1049"}
@@ -93,3 +88,31 @@ def test_missing_doc_number_and_due_date_fall_back(tmp_path: Path) -> None:
     case = next(c for c in FixtureSource(tmp_path).cases(AS_OF) if c.invoice.id == "101")
     assert case.invoice.doc_number == "101"
     assert case.invoice.due_date == case.invoice.txn_date
+
+
+# --- live-output shapes found in the slice 2 probe ---
+
+
+def test_parse_entities_accepts_a_json_array_item() -> None:
+    content = [
+        {"type": "text", "text": "Found 2 payment(s):"},
+        {"type": "text", "text": '[{"Id": "1"}, {"Id": "2"}]'},
+    ]
+    assert parse_entities(content) == [{"Id": "1"}, {"Id": "2"}]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "MCP error -32602: Input validation error: Expected array",
+        "WARNING: search_payments does not support this parameter: criteria. It was IGNORED",
+    ],
+)
+def test_parse_entities_fails_loudly_on_validation_errors_and_ignored_params(text: str) -> None:
+    with pytest.raises(McpContentError):
+        parse_entities([{"type": "text", "text": text}])
+
+
+def test_parse_entities_rejects_arrays_of_non_objects() -> None:
+    with pytest.raises(McpContentError):
+        parse_entities([{"type": "text", "text": "[1, 2]"}])

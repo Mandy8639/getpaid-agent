@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://getpaid:getpaid@localhost:5434/getpaid"
 
     drafter: Literal["template", "llm"] = "template"
+    source: Literal["fixture", "mcp"] = "fixture"
     web_origin: str = "http://localhost:3000"
 
     def model_list(self) -> list[str]:

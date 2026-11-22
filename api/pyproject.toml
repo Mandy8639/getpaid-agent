@@ -12,6 +12,7 @@ dependencies = [
   "langgraph>=0.2",
   "sqlalchemy>=2.0",
   "psycopg[binary]>=3.2",
+  "mcp>=1.9",
 ]
 
 [dependency-groups]
@@ -22,6 +23,7 @@ dev = [
     "mypy>=1.13",
     "respx>=0.21",
     "pytest-socket>=0.8.1",
+    "pytest-asyncio>=1.5.0",
 ]
 
 [build-system]
@@ -39,6 +41,9 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP", "S", "SIM"]
 ignore = ["S101"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]  # fake keys and paths in tests
+
 [tool.mypy]
 strict = true
 python_version = "3.12"
@@ -46,4 +51,7 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["live: talks to the real sandbox through the MCP server (RUN_LIVE=1)"]
 addopts = "--cov=getpaid --cov-report=term-missing --cov-fail-under=80 --disable-socket --allow-hosts=127.0.0.1,::1"

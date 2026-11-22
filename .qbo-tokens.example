@@ -1,0 +1,7 @@
+# Copy to .qbo-tokens (chmod 600). Only QUICKBOOKS_* keys may live here: Intuit's MCP
+# server loads this whole file. The one-time OAuth fills the refresh token and realm ID.
+QUICKBOOKS_CLIENT_ID=
+QUICKBOOKS_CLIENT_SECRET=
+QUICKBOOKS_ENVIRONMENT=sandbox
+QUICKBOOKS_REFRESH_TOKEN=
+QUICKBOOKS_REALM_ID=

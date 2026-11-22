@@ -3,23 +3,12 @@
  "content": [
   {
    "type": "text",
-   "text": "Found 4 payments"
+   "text": "Found 4 payment(s):"
   },
   {
    "type": "text",
-   "text": "{\"Id\": \"201\", \"TxnDate\": \"2026-11-12\", \"TotalAmt\": 2000.0, \"CustomerRef\": {\"value\": \"13\"}, \"Line\": [{\"Amount\": 2000.0, \"LinkedTxn\": [{\"TxnId\": \"103\", \"TxnType\": \"Invoice\"}]}]}"
-  },
-  {
-   "type": "text",
-   "text": "{\"Id\": \"202\", \"TxnDate\": \"2026-11-05\", \"TotalAmt\": 450.0, \"CustomerRef\": {\"value\": \"15\"}, \"Line\": [{\"Amount\": 450.0, \"LinkedTxn\": [{\"TxnId\": \"105\", \"TxnType\": \"Invoice\"}]}]}"
-  },
-  {
-   "type": "text",
-   "text": "{\"Id\": \"203\", \"TxnDate\": \"2026-07-20\", \"TotalAmt\": 410.0, \"CustomerRef\": {\"value\": \"12\"}, \"Line\": [{\"Amount\": 410.0, \"LinkedTxn\": [{\"TxnId\": \"090\", \"TxnType\": \"Invoice\"}]}]}"
-  },
-  {
-   "type": "text",
-   "text": "{\"Id\": \"204\", \"TxnDate\": \"2026-08-28\", \"TotalAmt\": 515.0, \"CustomerRef\": {\"value\": \"12\"}, \"Line\": [{\"Amount\": 515.0, \"LinkedTxn\": [{\"TxnId\": \"095\", \"TxnType\": \"Invoice\"}]}]}"
+   "text": "[{\"Id\": \"201\", \"TxnDate\": \"2026-11-12\", \"TotalAmt\": 2000.0, \"CustomerRef\": {\"value\": \"13\"}, \"Line\": [{\"Amount\": 2000.0, \"LinkedTxn\": [{\"TxnId\": \"103\", \"TxnType\": \"Invoice\"}]}]}, {\"Id\": \"202\", \"TxnDate\": \"2026-11-05\", \"TotalAmt\": 450.0, \"CustomerRef\": {\"value\": \"15\"}, \"Line\": [{\"Amount\": 450.0, \"LinkedTxn\": [{\"TxnId\": \"105\", \"TxnType\": \"Invoice\"}]}]}, {\"Id\": \"203\", \"TxnDate\": \"2026-07-20\", \"TotalAmt\": 410.0, \"CustomerRef\": {\"value\": \"12\"}, \"Line\": [{\"Amount\": 410.0, \"LinkedTxn\": [{\"TxnId\": \"090\", \"TxnType\": \"Invoice\"}]}]}, {\"Id\": \"204\", \"TxnDate\": \"2026-08-28\", \"TotalAmt\": 515.0, \"CustomerRef\": {\"value\": \"12\"}, \"Line\": [{\"Amount\": 515.0, \"LinkedTxn\": [{\"TxnId\": \"095\", \"TxnType\": \"Invoice\"}]}]}]"
   }
- ]
+ ],
+ "_note": "Shape matches the live server (slice 2 probe): payments come back as one JSON array."
 }

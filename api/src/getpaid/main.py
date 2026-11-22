@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from getpaid.agent.decide import decide
 from getpaid.agent.drafter import Drafter, LLMDrafter, TemplateDrafter
 from getpaid.agent.graph import RunResult, run_case
+from getpaid.data.mcp_source import McpSource
 from getpaid.data.source import DataSource, FixtureSource
 from getpaid.db import approvals, drafts, make_engine, metadata
 from getpaid.domain import Action, Case, HoldReason, Policy
@@ -115,7 +116,10 @@ def create_app(
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
-    today = as_of or getattr(source, "as_of", None) or date.today()
+
+    def today() -> date:
+        """Fixtures carry their own date; live data uses the real date at each run."""
+        return as_of or getattr(source, "as_of", None) or date.today()
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -130,7 +134,7 @@ def create_app(
             }
         # Draft outside any DB transaction: model calls can be slow or fail.
         rows = []
-        for case in source.cases(today):
+        for case in source.cases(today()):
             if (case.invoice.id, case.invoice.balance) in seen:
                 continue
             rows.append(_row(case, _safe_run(case, policy, drafter)))
@@ -195,7 +199,7 @@ def _app_from_settings() -> FastAPI:
     )
     return create_app(
         engine=engine,
-        source=FixtureSource(),
+        source=McpSource() if s.source == "mcp" else FixtureSource(),
         drafter=drafter,
         policy=Policy(),
         web_origin=s.web_origin,
