@@ -156,6 +156,9 @@ def build_body(
     model: str, messages: list[Message], schema: type[BaseModel], *, max_tokens: int = 800
 ) -> dict[str, Any]:
     """The only constructor of request bodies. Always denies provider data collection."""
+    json_schema = schema.model_json_schema()
+    # Strict structured output needs every property listed as required (nullable if optional).
+    json_schema["required"] = list(json_schema.get("properties", {}))
     return {
         "model": model,
         "messages": messages,
@@ -166,7 +169,7 @@ def build_body(
             "json_schema": {
                 "name": schema.__name__,
                 "strict": True,
-                "schema": schema.model_json_schema(),
+                "schema": json_schema,
             },
         },
         "usage": {"include": True},

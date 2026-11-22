@@ -25,3 +25,12 @@ test("owner checks invoices, reviews the top draft and approves it", async ({ pa
   const approved = await (await request.get("http://localhost:8010/drafts?status=approved")).json();
   expect(approved.map((d: { invoice_number: string }) => d.invoice_number)).toEqual(["1045"]);
 });
+
+test("asking without a model configured explains why", async ({ page }) => {
+  await page.goto("/drafts");
+  await page.getByLabel("Ask about your invoices").fill("Who's more than 60 days late?");
+  await page.getByRole("button", { name: "Ask" }).click();
+  await expect(page.getByRole("region", { name: "Questions" }).getByRole("alert")).toContainText(
+    "Q&A needs a model",
+  );
+});

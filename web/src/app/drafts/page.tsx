@@ -2,9 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { AskBox } from "@/components/AskBox";
 import { DraftReview } from "@/components/DraftReview";
 import { HeldList } from "@/components/HeldList";
-import { decide, listDrafts, nextDraft, runAgent, type Decision, type Draft } from "@/lib/api";
+import {
+  askQuestion,
+  decide,
+  listDrafts,
+  nextDraft,
+  runAgent,
+  type Decision,
+  type Draft,
+} from "@/lib/api";
 
 export default function DraftsPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -18,7 +27,10 @@ export default function DraftsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [next, heldNow] = await Promise.all([nextDraft(), listDrafts("held")]);
+      const [next, heldNow] = await Promise.all([
+        nextDraft(),
+        listDrafts("held"),
+      ]);
       setDraft(next);
       setHeld(heldNow);
     } catch {
@@ -79,6 +91,7 @@ export default function DraftsPage() {
       <p className="mt-1 text-sm text-gray-600">
         Nothing is sent without your approval. Sample data only.
       </p>
+      <AskBox onAsk={askQuestion} />
       {message && (
         <p role="status" className="mt-4 text-sm text-gray-700">
           {message}

@@ -9,13 +9,21 @@ from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Engine, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from getpaid.agent.decide import decide
 from getpaid.agent.drafter import Drafter, LLMDrafter, TemplateDrafter
 from getpaid.agent.graph import RunResult, run_case
+from getpaid.agent.qa import (
+    MAX_QUESTION,
+    Asker,
+    LLMAsker,
+    QuestionError,
+    ask,
+    validate_question,
+)
 from getpaid.data.mcp_source import McpSource
 from getpaid.data.source import DataSource, FixtureSource
 from getpaid.db import approvals, drafts, make_engine, metadata
@@ -25,6 +33,17 @@ from getpaid.llm.openrouter import SpendCapReached
 log = logging.getLogger("getpaid")
 
 Status = Literal["pending", "held", "approved", "skipped"]
+
+
+class AskIn(BaseModel):
+    question: str = Field(min_length=1, max_length=MAX_QUESTION)
+
+
+class AskOut(BaseModel):
+    answer: str
+    source: Literal["model", "fallback", "refused"]
+    rows: list[dict[str, Any]]
+    summary: dict[str, Any]
 
 
 class DecisionIn(BaseModel):
@@ -108,6 +127,7 @@ def create_app(
     policy: Policy,
     as_of: date | None = None,
     web_origin: str = "http://localhost:3000",
+    asker: Asker | None = None,
 ) -> FastAPI:
     app = FastAPI(title="getpaid-agent API", version="0.1.0")
     app.add_middleware(
@@ -166,6 +186,29 @@ def create_app(
             row = c.execute(q).first()
         return _out(row) if row else Response(status_code=204)
 
+    @app.post("/ask")
+    def ask_endpoint(body: AskIn) -> AskOut:
+        if asker is None:
+            raise HTTPException(
+                503, "Q&A needs a model: set OPENROUTER_API_KEY and OPENROUTER_MODELS"
+            )
+        try:
+            question = validate_question(body.question)
+        except QuestionError as e:
+            raise HTTPException(422, str(e)) from e
+        try:
+            cases = source.cases(today())
+        except Exception as e:
+            log.exception("data source failed for /ask")
+            raise HTTPException(502, "couldn't read invoices from the data source") from e
+        try:
+            result = ask(question, cases, asker)
+        except SpendCapReached as e:
+            raise HTTPException(503, "the model spending limit has been reached") from e
+        return AskOut(
+            answer=result.answer, source=result.source, rows=result.rows, summary=result.summary
+        )
+
     @app.post("/drafts/{draft_id}/decision")
     def decide_draft(draft_id: int, body: DecisionIn) -> DraftOut:
         new_status = "approved" if body.decision == "approve" else "skipped"
@@ -194,13 +237,14 @@ def _app_from_settings() -> FastAPI:
     s = get_settings()
     engine = make_engine(s.database_url)
     metadata.create_all(engine)
-    drafter: Drafter = (
-        LLMDrafter(client_from_settings(s)) if s.drafter == "llm" else TemplateDrafter()
-    )
+    has_key = bool(s.openrouter_api_key.get_secret_value().strip()) and bool(s.model_list())
+    client = client_from_settings(s) if has_key else None
+    drafter: Drafter = LLMDrafter(client) if (s.drafter == "llm" and client) else TemplateDrafter()
     return create_app(
         engine=engine,
         source=McpSource() if s.source == "mcp" else FixtureSource(),
         drafter=drafter,
         policy=Policy(),
         web_origin=s.web_origin,
+        asker=LLMAsker(client) if client else None,
     )

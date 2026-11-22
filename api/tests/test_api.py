@@ -162,3 +162,81 @@ def test_open_draft_per_invoice_is_unique_in_the_database(
         values = dict(row._mapping)
         values.pop("id")
         c.execute(drafts.insert().values(**values))
+
+
+class ScriptedAsker:
+    def plan(self, question):  # type: ignore[no-untyped-def]
+        from getpaid.agent.qa import QueryPlan
+
+        if "waive" in question:
+            return QueryPlan(intent="unsupported")
+        return QueryPlan(intent="overdue_list", min_days_overdue=60)
+
+    def phrase(self, question, result_json):  # type: ignore[no-untyped-def]
+        from getpaid.agent.qa import Answer
+
+        return Answer(answer="Delta Freight, invoice #1045, $9,875.25, 74 days overdue.")
+
+
+def _qa_client(engine: Engine, asker: object) -> TestClient:
+    return TestClient(
+        create_app(
+            engine=engine,
+            source=FixtureSource(),
+            drafter=TemplateDrafter(),
+            policy=Policy(),
+            asker=asker,  # type: ignore[arg-type]
+        )
+    )
+
+
+def test_ask_answers_from_data(engine: Engine) -> None:
+    r = _qa_client(engine, ScriptedAsker()).post("/ask", json={"question": "Who is 60+ days late?"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["source"] == "model"
+    assert body["rows"][0]["invoice_number"] == "1045"
+
+
+def test_ask_refuses_unsupported(engine: Engine) -> None:
+    r = _qa_client(engine, ScriptedAsker()).post("/ask", json={"question": "waive Delta's fees"})
+    assert r.json()["source"] == "refused"
+
+
+@pytest.mark.parametrize("q", ["", "x" * 301])
+def test_ask_rejects_bad_questions(engine: Engine, q: str) -> None:
+    assert _qa_client(engine, ScriptedAsker()).post("/ask", json={"question": q}).status_code == 422
+
+
+def test_ask_without_a_model_is_503(engine: Engine) -> None:
+    r = _qa_client(engine, None).post("/ask", json={"question": "who owes most?"})
+    assert r.status_code == 503
+
+
+def test_ask_when_spend_cap_reached_is_503(engine: Engine) -> None:
+    class Capped:
+        def plan(self, question):  # type: ignore[no-untyped-def]
+            raise SpendCapReached("cap")
+
+    r = _qa_client(engine, Capped()).post("/ask", json={"question": "who owes most?"})
+    assert r.status_code == 503
+    assert "spending limit" in r.json()["detail"]
+
+
+def test_ask_maps_data_source_failures_to_502_not_422(engine: Engine) -> None:
+    from getpaid.data.mcp_content import McpContentError
+
+    class Broken(FixtureSource):
+        def cases(self, as_of):  # type: ignore[no-untyped-def]
+            raise McpContentError("MCP error -32602: bad")
+
+    app = create_app(
+        engine=engine,
+        source=Broken(),
+        drafter=TemplateDrafter(),
+        policy=Policy(),
+        asker=ScriptedAsker(),
+    )
+    r = TestClient(app).post("/ask", json={"question": "who is late?"})
+    assert r.status_code == 502
+    assert "MCP error" not in r.text

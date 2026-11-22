@@ -311,3 +311,11 @@ def test_api_key_sent_as_bearer_and_never_in_body(tmp_path: Path) -> None:
     req = route.calls[0].request
     assert req.headers["Authorization"] == "Bearer test-key"
     assert b"test-key" not in req.content
+
+
+def test_strict_schema_lists_every_property_as_required() -> None:
+    from getpaid.agent.qa import QueryPlan
+
+    schema = build_body("m", MSGS, QueryPlan)["response_format"]["json_schema"]["schema"]
+    assert set(schema["required"]) == set(schema["properties"])
+    assert schema["additionalProperties"] is False

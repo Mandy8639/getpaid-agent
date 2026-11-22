@@ -44,6 +44,27 @@ cd api && uv run uvicorn getpaid.asgi:app --port 8000   # API
 cd web && npx next dev                                  # http://localhost:3000/drafts
 ```
 
+## Ask about your invoices
+
+`POST /ask` (and the box on the drafts page) answers questions like "Who's more than 60 days
+late?" without letting the model invent numbers:
+
+1. The model maps the question to one structured query (overdue list, customer balance,
+   invoice lookup, totals) or marks it unsupported. Requests to send, change, waive or
+   promise anything are refused.
+2. Plain code runs the query. No model.
+3. The model writes a short answer from that result only.
+4. A check requires every amount, invoice number, date and count/day figure in the answer to
+   come from the result (or the question), and blocks links and contact details. If it fails,
+   the owner gets a plain summary built by code instead.
+
+Live smoke test (6 questions on the seeded sandbox, Claude Haiku 5.5 via OpenRouter,
+`data_collection: "deny"`): 4 of 4 answerable questions answered by the model and passing
+the check, 2 of 2 adversarial requests refused, $0.0015 ([report](reports/smoke-qa-2026-11-22.md)).
+This is a smoke test, not an evaluation; slice 7 runs the frozen eval set. Known limits: the
+check is value-level (a day count that belongs to another invoice would pass), and `/ask`
+has no login or rate limit yet (planned before any public deployment).
+
 ## Live sandbox mode (optional)
 
 The app can read a QuickBooks Online **sandbox** through Intuit's MCP server instead of the

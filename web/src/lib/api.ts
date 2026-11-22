@@ -46,3 +46,23 @@ export async function decide(id: number, decision: Decision): Promise<Draft> {
   });
   return (await ok(r)).json();
 }
+
+export type AskResult = {
+  answer: string;
+  source: "model" | "fallback" | "refused";
+  rows: { invoice_number: string; customer: string; balance: string; days_overdue: number }[];
+  summary: { count?: number; total_balance?: string };
+};
+
+export async function askQuestion(question: string): Promise<AskResult> {
+  const r = await fetch(`${API_URL}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (r.status === 503) {
+    const body = (await r.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? "Questions are unavailable right now.");
+  }
+  return (await ok(r)).json();
+}
