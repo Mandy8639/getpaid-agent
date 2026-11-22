@@ -10,25 +10,59 @@ export type Decision = "approve" | "skip";
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// Public previews are protected by an access code, kept only for this browser session.
+const CODE_KEY = "getpaid-access-code";
+
+export class AccessRequired extends Error {
+  constructor() {
+    super("An access code is needed for this preview.");
+  }
+}
+
+export function setAccessCode(code: string) {
+  try {
+    sessionStorage.setItem(CODE_KEY, code);
+  } catch {
+    /* storage unavailable: the code lasts until reload */
+  }
+}
+
+function accessCode(): string | null {
+  try {
+    return sessionStorage.getItem(CODE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function call(url: string, init: RequestInit = {}): Promise<Response> {
+  const code = accessCode();
+  const headers = new Headers(init.headers);
+  if (code) headers.set("Authorization", `Bearer ${code}`);
+  const r = await fetch(url, { ...init, headers });
+  if (r.status === 401) throw new AccessRequired();
+  return r;
+}
+
 async function ok(r: Response): Promise<Response> {
   if (!r.ok) throw new Error(`API ${r.status}`);
   return r;
 }
 
 export async function runAgent(): Promise<{ pending: number; held: number }> {
-  return (await ok(await fetch(`${API_URL}/runs`, { method: "POST" }))).json();
+  return (await ok(await call(`${API_URL}/runs`, { method: "POST" }))).json();
 }
 
 export async function nextDraft(): Promise<Draft | null> {
   const r = await ok(
-    await fetch(`${API_URL}/drafts/next`, { cache: "no-store" }),
+    await call(`${API_URL}/drafts/next`, { cache: "no-store" }),
   );
   return r.status === 204 ? null : r.json();
 }
 
 export async function listDrafts(status: Draft["status"]): Promise<Draft[]> {
   const r = await ok(
-    await fetch(`${API_URL}/drafts?status=${status}`, { cache: "no-store" }),
+    await call(`${API_URL}/drafts?status=${status}`, { cache: "no-store" }),
   );
   return r.json();
 }
@@ -45,7 +79,7 @@ export async function decide(
   edits?: { subject?: string; body?: string },
   secondsToDecide?: number,
 ): Promise<Draft> {
-  const r = await fetch(`${API_URL}/drafts/${id}/decision`, {
+  const r = await call(`${API_URL}/drafts/${id}/decision`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -71,7 +105,7 @@ export async function decide(
 
 export async function experimentArm(experimentId: string): Promise<string> {
   const r = await ok(
-    await fetch(`${API_URL}/experiments/${experimentId}/assignment`, {
+    await call(`${API_URL}/experiments/${experimentId}/assignment`, {
       cache: "no-store",
     }),
   );
@@ -80,7 +114,7 @@ export async function experimentArm(experimentId: string): Promise<string> {
 
 export async function listActivity(): Promise<Activity[]> {
   return (
-    await ok(await fetch(`${API_URL}/activity`, { cache: "no-store" }))
+    await ok(await call(`${API_URL}/activity`, { cache: "no-store" }))
   ).json();
 }
 
@@ -97,7 +131,7 @@ export type AskResult = {
 };
 
 export async function askQuestion(question: string): Promise<AskResult> {
-  const r = await fetch(`${API_URL}/ask`, {
+  const r = await call(`${API_URL}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question }),

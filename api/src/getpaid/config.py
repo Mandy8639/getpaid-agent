@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     drafter: Literal["template", "llm"] = "template"
     source: Literal["fixture", "mcp"] = "fixture"
     web_origin: str = "http://localhost:3000"
+    # Set for any public deployment: every route but /health then needs this code.
+    access_code: SecretStr = SecretStr("")
 
     def model_list(self) -> list[str]:
         return [m.strip() for m in self.openrouter_models.split(",") if m.strip()]

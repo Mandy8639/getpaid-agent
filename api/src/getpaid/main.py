@@ -7,8 +7,9 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import Engine, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -32,6 +33,7 @@ from getpaid.domain import Action, Case, HoldReason, Policy
 from getpaid.evalset import case_from_dict, case_to_dict
 from getpaid.experiments.assign import EXP_001, EXPERIMENTS, assign
 from getpaid.llm.openrouter import SpendCapReached
+from getpaid.security import RateLimiter, code_ok
 
 log = logging.getLogger("getpaid")
 # Single-tenant until login exists (slice 8): every decision is attributed to one owner, so
@@ -216,14 +218,29 @@ def create_app(
     web_origin: str = "http://localhost:3000",
     asker: Asker | None = None,
     owner_id: str = DEMO_OWNER,
+    access_code: str | None = None,
+    limiter: RateLimiter | None = None,
 ) -> FastAPI:
     app = FastAPI(title="getpaid-agent API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[web_origin],
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization"],
     )
+
+    rate = limiter or RateLimiter()
+
+    @app.middleware("http")
+    async def protect(request: Request, call_next: Any) -> Any:
+        if request.method == "OPTIONS" or request.url.path == "/health":
+            return await call_next(request)
+        if access_code and not code_ok(request.headers.get("authorization"), access_code):
+            return JSONResponse({"detail": "access code required"}, status_code=401)
+        client = request.client.host if request.client else "unknown"
+        if request.method == "POST" and not rate.allow(client, request.url.path):
+            return JSONResponse({"detail": "too many requests, try again in a minute"}, 429)
+        return await call_next(request)
 
     def today() -> date:
         """Fixtures carry their own date; live data uses the real date at each run."""
@@ -445,4 +462,5 @@ def _app_from_settings() -> FastAPI:
         policy=Policy(),
         web_origin=s.web_origin,
         asker=LLMAsker(client) if client else None,
+        access_code=s.access_code.get_secret_value() or None,
     )

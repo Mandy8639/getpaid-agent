@@ -8,7 +8,9 @@ import { DraftReview } from "@/components/DraftReview";
 import { HeldList } from "@/components/HeldList";
 import { Queue } from "@/components/Queue";
 import {
+  AccessRequired,
   EditRejected,
+  setAccessCode,
   askQuestion,
   decide,
   experimentArm,
@@ -35,6 +37,8 @@ export default function DraftsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needCode, setNeedCode] = useState(false);
+  const [code, setCode] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,8 +55,9 @@ export default function DraftsPage() {
       setSelectedId((id) =>
         p.some((d) => d.id === id) ? id : (p[0]?.id ?? null),
       );
-    } catch {
-      setError("Couldn't reach the API.");
+    } catch (e) {
+      if (e instanceof AccessRequired) setNeedCode(true);
+      else setError("Couldn't reach the API.");
     } finally {
       setLoading(false);
     }
@@ -105,6 +110,43 @@ export default function DraftsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (needCode) {
+    return (
+      <main className="mx-auto max-w-sm p-8">
+        <h1 className="text-xl font-semibold">Access code</h1>
+        <p className="mt-1 text-sm text-gray-600">
+          This preview is protected. Enter the code you were given.
+        </p>
+        <form
+          className="mt-4 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setAccessCode(code);
+            setNeedCode(false);
+            void load();
+          }}
+        >
+          <label htmlFor="code" className="sr-only">
+            Access code
+          </label>
+          <input
+            id="code"
+            type="password"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            className="rounded bg-black px-4 py-2 text-sm text-white"
+          >
+            Continue
+          </button>
+        </form>
+      </main>
+    );
   }
 
   return (

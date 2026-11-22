@@ -5,7 +5,7 @@ through an accounting MCP server, drafts a reminder for each overdue one, checks
 amount, date and invoice number against the record, and sends nothing without the owner's
 approval.
 
-Status: under construction. Slices 1–7 of 8: works end to end on synthetic invoices, from
+Status: slices 1–8 of 8 built. Works end to end on synthetic invoices, works end to end on synthetic invoices, from
 saved sample files or live from a QuickBooks Online sandbox through Intuit's MCP server:
 check invoices → deterministic decision (paid, disputed and not-yet-due invoices are held)
 → draft (template, or an OpenRouter model with `DRAFTER=llm`) → guardrail → owner approves
@@ -130,6 +130,33 @@ This is a smoke test, not an evaluation; slice 7 runs the frozen eval set. Known
 check is value-level (a day count that belongs to another invoice would pass), and `/ask`
 has no login or rate limit yet (planned before any public deployment).
 
+## Ask from Claude Desktop (MCP)
+
+`getpaid` is also an MCP server, so the owner can ask about overdue invoices from Claude
+Desktop or any MCP client. It has three **read-only** tools (`overdue_invoices`,
+`customer_balance`, `invoice_lookup`), backed by the same deterministic queries as the
+dashboard, with bounded inputs and hidden hostile names. It cannot draft, approve or change
+anything.
+
+```json
+{ "mcpServers": { "getpaid": {
+    "command": "uv", "args": ["--directory", "/path/to/getpaid-agent/api", "run", "python", "-m", "getpaid.mcp_server"] } } }
+```
+
+## Security for a public preview
+
+- **Access code:** set `ACCESS_CODE` and every route except `/health` requires
+  `Authorization: Bearer <code>`, compared in constant time. The web app asks for the code
+  once per browser session.
+- **Rate limits:** per client, `/runs` 5 per minute, `/ask` 10 per minute, decisions 60 per
+  minute. This sits on top of the $5 total model spend cap.
+- **CORS:** only `WEB_ORIGIN` is allowed.
+- **Data:** the preview uses the synthetic sample files (`SOURCE=fixture`), never the sandbox
+  tokens.
+- **Single owner:** this is a single-owner demo, so there are no per-user accounts. A real
+  product needs login, per-business data scoping, migrations run by a separate DB role, and a
+  sender that re-checks text at send time.
+
 ## Live sandbox mode (optional)
 
 The app can read a QuickBooks Online **sandbox** through Intuit's MCP server instead of the
@@ -169,6 +196,29 @@ total spend cap (default $5).
 Sandbox and synthetic data only. The accounting connection uses the QuickBooks Online
 sandbox through Intuit's open-source MCP server, installed as a pinned git dependency
 (see NOTICE).
+
+## How this was built
+
+Built in one day (2026-11-22) with Claude Code as the coding agent, directed by me through a
+gated workflow (ECC orch-build-mvp). Each slice was planned and approved, test-driven,
+reviewed by separate code and security review agents, fixed, and then committed only after
+my confirmation. Commit times:
+
+| slice | commit | time |
+|---|---|---|
+| 0 skeleton, spend-capped model client | c420949 | 11:44 |
+| 1 end-to-end review flow, guardrail | bad30a3 | 12:01 |
+| 2 live QuickBooks sandbox via Intuit's MCP server | bffb197 | 12:36 |
+| 3 frozen eval set | 7aa7987 | 12:41 |
+| 4 owner Q&A with number check | 3150bc7 | 12:55 |
+| 5 dashboard, edits, migrations, typed client | 198d79f | 13:06 |
+| 6 pre-registered experiments (simulated owners) | 09cd685 | 16:53 |
+| 7 eval harness and frozen-test results | dfe8564 | 17:18 |
+| 8 MCP front door, access code, rate limits | (this commit) | |
+
+Things the reviews and live runs caught are recorded in the reports: a leaked model key
+path, guardrail false positives on real model output, an underpowered experiment design,
+and a wiring bug that tests had missed.
 
 ---
 

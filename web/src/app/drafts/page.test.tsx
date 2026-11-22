@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import DraftsPage from "./page";
@@ -62,4 +62,31 @@ test("EXP-001 arm 'show' shows the payment history on the real page", async () =
   await waitFor(() =>
     expect(screen.getByLabelText("Payment history")).toBeTruthy(),
   );
+});
+
+test("a 401 shows the access-code form, and the code is sent afterwards", async () => {
+  const seen: (string | null)[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const auth = new Headers(init?.headers).get("Authorization");
+      seen.push(auth);
+      if (auth !== "Bearer let-me-in")
+        return new Response("{}", { status: 401 });
+      const body = url.includes("/assignment")
+        ? { arm: "show" }
+        : url.includes("pending")
+          ? [draft]
+          : [];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }),
+  );
+  render(<DraftsPage />);
+  const input = await screen.findByLabelText("Access code");
+  fireEvent.change(input, { target: { value: "let-me-in" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await waitFor(() =>
+    expect(screen.getByRole("heading", { name: "Delta Freight" })).toBeTruthy(),
+  );
+  expect(seen).toContain("Bearer let-me-in");
 });
