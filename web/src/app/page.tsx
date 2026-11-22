@@ -5,6 +5,9 @@ export default function Home() {
       <p className="mt-2 text-gray-600">
         Drafts follow-ups for overdue invoices. Nothing is sent without your approval.
       </p>
+      <a href="/drafts" className="mt-6 inline-block rounded bg-black px-4 py-2 text-white">
+        Review reminders
+      </a>
     </main>
   );
 }

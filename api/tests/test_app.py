@@ -7,12 +7,22 @@ from pydantic import ValidationError
 from pytest_socket import SocketBlockedError, SocketConnectBlockedError
 
 from getpaid import spend_init
+from getpaid.agent.drafter import TemplateDrafter
 from getpaid.config import Settings, get_settings
+from getpaid.data.source import FixtureSource
+from getpaid.db import make_engine
+from getpaid.domain import Policy
 from getpaid.llm.factory import client_from_settings
-from getpaid.main import app
+from getpaid.main import create_app
 
 
 def test_health() -> None:
+    app = create_app(
+        engine=make_engine("sqlite://"),
+        source=FixtureSource(),
+        drafter=TemplateDrafter(),
+        policy=Policy(),
+    )
     assert TestClient(app).get("/health").json() == {"status": "ok"}
 
 

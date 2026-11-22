@@ -1,4 +1,4 @@
-.PHONY: up down install mcp spend-init test lint
+.PHONY: up down install mcp spend-init test lint e2e
 
 up:
 	docker compose up -d --wait db
@@ -18,10 +18,13 @@ mcp:
 spend-init:
 	cd api && uv run python -m getpaid.spend_init
 
-test: install
+test: install up
 	cd api && uv run pytest -q
 	cd web && npx vitest run
 
 lint: install
 	cd api && uv run ruff check . && uv run ruff format --check . && uv run mypy src tests
 	cd web && npx tsc --noEmit && npm run lint
+
+e2e: install up
+	cd web && npx playwright test

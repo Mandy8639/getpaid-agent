@@ -1,0 +1,21 @@
+{
+ "_synthetic": "All records are synthetic, created for this demo. Shapes copy the MCP server's tool output (MCP text content items holding QuickBooks Online entity JSON).",
+ "as_of": "2026-11-22",
+ "late_history": {
+  "12": [
+   {
+    "invoice": "090",
+    "due": "2026-06-30",
+    "paid": "2026-07-20"
+   },
+   {
+    "invoice": "095",
+    "due": "2026-07-31",
+    "paid": "2026-08-28"
+   }
+  ]
+ },
+ "disputed_invoice_ids": [
+  "106"
+ ]
+}

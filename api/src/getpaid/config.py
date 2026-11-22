@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +19,9 @@ class Settings(BaseSettings):
     spend_reserve_usd: float = Field(default=0.05, ge=0)
     spend_ledger_path: Path = REPO_ROOT / ".spend" / "ledger.json"
     database_url: str = "postgresql+psycopg://getpaid:getpaid@localhost:5434/getpaid"
+
+    drafter: Literal["template", "llm"] = "template"
+    web_origin: str = "http://localhost:3000"
 
     def model_list(self) -> list[str]:
         return [m.strip() for m in self.openrouter_models.split(",") if m.strip()]

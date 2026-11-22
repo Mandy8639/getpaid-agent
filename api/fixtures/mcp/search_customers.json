@@ -1,0 +1,41 @@
+{
+ "tool": "search_customers",
+ "content": [
+  {
+   "type": "text",
+   "text": "Found 8 customers"
+  },
+  {
+   "type": "text",
+   "text": "{\"Id\": \"11\", \"DisplayName\": \"Acme Landscaping\", \"PrimaryEmailAddr\": {\"Address\": \"ap@acme.example\"}}"
+  },
+  {
+   "type": "text",
+   "text": "{\"Id\": \"12\", \"DisplayName\": \"Birch Street Bakery\", \"PrimaryEmailAddr\": {\"Address\": \"ap@birch.example\"}}"
+  },
+  {
+   "type": "text",
+   "text": "{\"Id\": \"13\", \"DisplayName\": \"Cobalt Dental\", \"PrimaryEmailAddr\": {\"Address\": \"ap@cobalt.example\"}}"
+  },
+  {
+   "type": "text",
+   "text": "{\"Id\": \"14\", \"DisplayName\": \"Delta Freight\", \"PrimaryEmailAddr\": {\"Address\": \"ap@delta.example\"}}"
+  },
+  {
+   "type": "text",
+   "text": "{\"Id\": \"15\", \"DisplayName\": \"Evergreen Yoga\", \"PrimaryEmailAddr\": {\"Address\": \"ap@evergreen.example\"}}"
+  },
+  {
+   "type": "text",
+   "text": "{\"Id\": \"16\", \"DisplayName\": \"Fulton Print Co\", \"PrimaryEmailAddr\": {\"Address\": \"ap@fulton.example\"}}"
+  },
+  {
+   "type": "text",
+   "text": "{\"Id\": \"17\", \"DisplayName\": \"Granite Legal\", \"PrimaryEmailAddr\": {\"Address\": \"ap@granite.example\"}}"
+  },
+  {
+   "type": "text",
+   "text": "{\"Id\": \"18\", \"DisplayName\": \"Harbor Cafe\", \"PrimaryEmailAddr\": {\"Address\": \"ap@harbor.example\"}}"
+  }
+ ]
+}
